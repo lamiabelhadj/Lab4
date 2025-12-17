@@ -6,15 +6,26 @@ from typing import Optional, List
 import os
 from datetime import datetime
 import uuid
+from dotenv import load_dotenv
+import os
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List
+from reportlab.pdfgen import canvas
 import asyncpg
 from contextlib import asynccontextmanager
 
 
 db_pool = None
 
+load_dotenv(dotenv_path="env.example")  
+
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:password@localhost:5432/loandb"
+    "postgresql://postgres:1234@localhost:5432/loandb"
 )
 
 
@@ -197,6 +208,66 @@ async def get_loan_application(application_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/api/loan-application/{application_id}/approve")
+async def approve_loan(application_id: str):
+    async with db_pool.acquire() as conn:
+        loan = await conn.fetchrow("SELECT * FROM loan_applications WHERE application_id=$1", application_id)
+        if not loan:
+            raise HTTPException(404, "Application not found")
+        if loan["status"] != "Submitted":
+            raise HTTPException(400, "Cannot approve this status")
+
+        principal = float(loan["amount"])
+        months = loan["duration"]
+        rate = 0.055
+        monthly_rate = rate / 12
+        monthly_payment = principal * monthly_rate / (1 - (1 + monthly_rate) ** -months)
+
+        # Génération PDF contrat
+        contract_path = os.path.join(UPLOAD_DIR, f"{application_id}_contract.pdf")
+        c = canvas.Canvas(contract_path)
+        c.drawString(100, 700, f"Loan Contract for {application_id}")
+        c.drawString(100, 680, f"Amount: {principal}, Duration: {months}, Monthly: {monthly_payment:.2f}")
+        c.save()
+
+        # Génération PDF tableau amortissement
+        amort_path = os.path.join(UPLOAD_DIR, f"{application_id}_amortization.pdf")
+        c = canvas.Canvas(amort_path)
+        c.drawString(100, 700, f"Amortization Schedule for {application_id}")
+        balance = principal
+        y = 680
+        for i in range(1, months + 1):
+            interest = balance * monthly_rate
+            principal_payment = monthly_payment - interest
+            balance -= principal_payment
+            c.drawString(100, y, f"Month {i}: Payment {monthly_payment:.2f}, Principal {principal_payment:.2f}, Interest {interest:.2f}, Balance {balance:.2f}")
+            y -= 15
+            if y < 50:
+                c.showPage()
+                y = 700
+        c.save()
+
+        # Mettre à jour statut et stocker chemins
+        await conn.execute("UPDATE loan_applications SET status=$1, id_document=$2, salary_slip=$3 WHERE application_id=$4",
+                           "Approved", contract_path, amort_path, application_id)
+
+        return {"message": "Loan approved", "contract": contract_path, "amortization": amort_path}
+
+
+@app.get("/api/loan-application/{application_id}/contract")
+async def download_contract(application_id: str):
+    path = os.path.join(UPLOAD_DIR, f"{application_id}_contract.pdf")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Contract not found")
+    return FileResponse(path, media_type="application/pdf", filename=f"{application_id}_contract.pdf")
+
+
+@app.get("/api/loan-application/{application_id}/amortization")
+async def download_amortization(application_id: str):
+    path = os.path.join(UPLOAD_DIR, f"{application_id}_amortization.pdf")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Amortization not found")
+    return FileResponse(path, media_type="application/pdf", filename=f"{application_id}_amortization.pdf")
 
 
 if __name__ == "__main__":
