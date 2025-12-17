@@ -8,6 +8,9 @@ from datetime import datetime
 import uuid
 import asyncpg
 from contextlib import asynccontextmanager
+import pytesseract
+from pdf2image import convert_from_path
+import re
 
 
 db_pool = None
@@ -197,6 +200,76 @@ async def get_loan_application(application_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+def extract_income_from_salary_pdf(pdf_path: str) -> Optional[float]:
+    """
+    OCR sur la fiche de salaire pour extraire le revenu mensuel.
+    Retourne None si aucun chiffre n'a été trouvé.
+    """
+    images = convert_from_path(pdf_path)
+    full_text = ""
+    for img in images:
+        full_text += pytesseract.image_to_string(img)
+
+    for line in full_text.splitlines():
+        if re.search(r"(Income|Salaire)", line, re.IGNORECASE):
+            match = re.search(r"\d+(?:\.\d+)?", line.replace(",", ""))
+            if match:
+                return float(match.group())
+
+    return None
+
+
+
+@app.post("/api/loan-application/{application_id}/process")
+async def process_loan_application(application_id: str):
+    """
+    Use Case 2: Commercial service
+    - OCR sur la fiche de salaire
+    - Calcule un score initial (Pre-approved / Rejected)
+    """
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT amount, duration, income, salary_slip
+            FROM loan_applications
+            WHERE application_id = $1
+        """, application_id)
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # OCR sur la fiche de salaire
+    pdf_path = os.path.join(UPLOAD_DIR, row["salary_slip"])
+    extracted_income = extract_income_from_salary_pdf(pdf_path)
+
+    if extracted_income is None:
+        raise HTTPException(status_code=400, detail="Unable to extract income from PDF")
+
+    declared_income = float(row["income"])
+    monthly_payment = float(row["amount"]) / int(row["duration"])
+
+    if extracted_income >= monthly_payment * 2 and declared_income >= monthly_payment * 2:
+        status = "Pre-approved"
+    else:
+        status = "Rejected"
+
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE loan_applications
+            SET status = $1
+            WHERE application_id = $2
+        """, status, application_id)
+
+    return {
+        "application_id": application_id,
+        "declared_income": declared_income,
+        "extracted_income": extracted_income,
+        "monthly_payment": monthly_payment,
+        "status": status
+    }
 
 
 if __name__ == "__main__":
