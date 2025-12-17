@@ -1,0 +1,94 @@
+.loan-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #6b73ff, #7f53ac);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.loan-card {
+  background: white;
+  width: 100%;
+  max-width: 1000px;
+  border-radius: 18px;
+  padding: 30px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+}
+
+.loan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.loan-header h2 {
+  margin: 0;
+  color: #2e2e2e;
+}
+
+.download-btn {
+  background: linear-gradient(135deg, #6b73ff, #7f53ac);
+  border: none;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.section-title {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.info-box {
+  border: 1px solid #e5e5f0;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row span:first-child {
+  font-weight: 600;
+  color: #555;
+}
+
+.loan-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.loan-table thead {
+  background: linear-gradient(135deg, #6b73ff, #7f53ac);
+  color: white;
+}
+
+.loan-table th,
+.loan-table td {
+  padding: 12px;
+  text-align: center;
+}
+
+.loan-table tbody tr:nth-child(even) {
+  background-color: #f4f4fb;
+}
+
+.page-footer {
+  margin-top: 20px;
+  text-align: center;
+  color: #777;
+}
